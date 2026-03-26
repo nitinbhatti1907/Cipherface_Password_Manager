@@ -1,6 +1,14 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import toast from "react-hot-toast";
-import { LogOut, ShieldCheck, Sparkles } from "lucide-react";
+import {
+  Activity,
+  Clock3,
+  LogOut,
+  Plus,
+  ScanFace,
+  ShieldCheck,
+  Sparkles,
+} from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import api from "../lib/api";
 import { useAuth } from "../context/AuthContext";
@@ -16,6 +24,28 @@ function StatCard({ label, value, helper }) {
       <p className="text-xs uppercase tracking-[0.18em] text-slate-400">{label}</p>
       <p className="mt-3 text-3xl font-bold text-white">{value}</p>
       <p className="mt-2 text-sm text-slate-400">{helper}</p>
+    </div>
+  );
+}
+
+function SecurityFeature({ icon, title, text }) {
+  return (
+    <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+      <div className="mb-3 inline-flex rounded-2xl bg-cyanGlow/10 p-2 text-cyanGlow">
+        {icon}
+      </div>
+      <p className="text-sm font-semibold text-white">{title}</p>
+      <p className="mt-1 text-sm leading-6 text-slate-400">{text}</p>
+    </div>
+  );
+}
+
+function SnapshotCard({ label, value, helper }) {
+  return (
+    <div className="rounded-2xl border border-white/10 bg-slate-950/40 p-4">
+      <p className="text-[11px] uppercase tracking-[0.18em] text-slate-500">{label}</p>
+      <p className="mt-2 text-lg font-semibold text-white break-words">{value}</p>
+      <p className="mt-1 text-xs text-slate-400">{helper}</p>
     </div>
   );
 }
@@ -64,10 +94,24 @@ export default function DashboardPage() {
     () => [
       ["Vault entries", credentials.length, "Encrypted credentials under your account"],
       ["Audit events", logs.length, "Recorded activity for traceability"],
-      ["Auto logout", `${Math.floor(secondsLeft / 60)}:${String(secondsLeft % 60).padStart(2, "0")}`, "Remaining idle session time"],
+      [
+        "Auto logout",
+        `${Math.floor(secondsLeft / 60)}:${String(secondsLeft % 60).padStart(2, "0")}`,
+        "Remaining idle session time",
+      ],
     ],
     [credentials.length, logs.length, secondsLeft]
   );
+
+  const latestLog = logs[0];
+
+  const latestLogTitle = latestLog?.action
+    ? latestLog.action.replaceAll("_", " ")
+    : "No recent event";
+
+  const latestLogTime = latestLog?.created_at
+    ? new Date(latestLog.created_at).toLocaleString()
+    : "Waiting for activity";
 
   const handleDelete = async (item) => {
     if (!window.confirm(`Delete ${item.site_name}?`)) return;
@@ -90,8 +134,12 @@ export default function DashboardPage() {
               <ShieldCheck size={22} />
             </div>
             <div>
-              <p className="text-xs uppercase tracking-[0.18em] text-cyanGlow/70">Secure dashboard</p>
-              <h1 className="text-2xl font-bold text-white">Welcome, {user?.full_name || user?.email}</h1>
+              <p className="text-xs uppercase tracking-[0.18em] text-cyanGlow/70">
+                Secure dashboard
+              </p>
+              <h1 className="text-2xl font-bold text-white">
+                Welcome, {user?.full_name || user?.email}
+              </h1>
             </div>
           </div>
 
@@ -118,17 +166,42 @@ export default function DashboardPage() {
           <div className="panel overflow-hidden p-6">
             <div className="flex items-start justify-between gap-4">
               <div>
-                <p className="text-xs uppercase tracking-[0.18em] text-cyanGlow/70">Security posture</p>
+                <p className="text-xs uppercase tracking-[0.18em] text-cyanGlow/70">
+                  Security posture
+                </p>
                 <h2 className="mt-2 text-3xl font-bold text-white">Protected workspace</h2>
                 <p className="mt-4 max-w-2xl text-sm leading-7 text-slate-300">
-                  Your vault uses encrypted storage, biometric sign-in, audit history, and auto-logout. This dashboard is designed to feel modern and premium while staying readable and demo-ready.
+                  Your vault uses encrypted storage, biometric sign-in, audit history, and
+                  auto-logout. This dashboard is designed to stay clean, readable, and practical
+                  while giving you quick visibility into your current session.
                 </p>
               </div>
               <div className="rounded-2xl bg-cyanGlow/10 p-4 text-cyanGlow">
                 <Sparkles size={22} />
               </div>
             </div>
+
+            <div className="mt-6 grid gap-4 md:grid-cols-3">
+              <SecurityFeature
+                icon={<ScanFace size={18} />}
+                title="Biometric access"
+                text="Face login protects entry into your password vault."
+              />
+              <SecurityFeature
+                icon={<ShieldCheck size={18} />}
+                title="Encrypted storage"
+                text="Credential records stay protected inside your account workspace."
+              />
+              <SecurityFeature
+                icon={<Clock3 size={18} />}
+                title="Idle protection"
+                text="Sessions automatically close after inactivity to reduce risk."
+              />
+            </div>
+
+           
           </div>
+
           <div className="grid gap-5">
             {stats.map(([label, value, helper]) => (
               <StatCard key={label} label={label} value={value} helper={helper} />

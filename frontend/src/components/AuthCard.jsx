@@ -32,6 +32,10 @@ function getErrorMessage(detail, fallback) {
   return fallback;
 }
 
+function isChallengePassed(facePayload) {
+  return Boolean(facePayload?.challengePassed || facePayload?.livenessProof);
+}
+
 export default function AuthCard() {
   const navigate = useNavigate();
   const { login } = useAuth();
@@ -63,7 +67,8 @@ export default function AuthCard() {
       !registerData.email ||
       !registerData.password ||
       !registerData.confirm_password ||
-      !registerFace?.faceProfile
+      !registerFace?.faceProfile ||
+      !isChallengePassed(registerFace)
     ) {
       toast.error("Complete all fields and finish the strict three-pose face capture.");
       return;
@@ -74,7 +79,7 @@ export default function AuthCard() {
       const { data } = await api.post("/auth/register", {
         ...registerData,
         face_profile: registerFace.faceProfile,
-        challenge_passed: registerFace.challengePassed,
+        challenge_passed: isChallengePassed(registerFace),
       });
 
       login(data.access_token, data.user);
@@ -88,8 +93,8 @@ export default function AuthCard() {
   };
 
   const handleLogin = async () => {
-    if (!loginData.email || !loginFace?.descriptor) {
-      toast.error("Enter email and complete the strict front-face login capture.");
+    if (!loginData.email || !loginFace?.descriptor || !isChallengePassed(loginFace)) {
+      toast.error("Enter email and complete the secure login face capture.");
       return;
     }
 
@@ -98,7 +103,7 @@ export default function AuthCard() {
       const { data } = await api.post("/auth/login", {
         ...loginData,
         descriptor: loginFace.descriptor,
-        challenge_passed: loginFace.challengePassed,
+        challenge_passed: isChallengePassed(loginFace),
       });
 
       setLoginFailures(0);
@@ -127,7 +132,12 @@ export default function AuthCard() {
   };
 
   const handleResetFace = async () => {
-    if (!resetData.email || !resetData.password || !resetFace?.faceProfile) {
+    if (
+      !resetData.email ||
+      !resetData.password ||
+      !resetFace?.faceProfile ||
+      !isChallengePassed(resetFace)
+    ) {
       toast.error("Enter email, password, and finish the strict three-pose reset capture.");
       return;
     }
@@ -137,7 +147,7 @@ export default function AuthCard() {
       const { data } = await api.post("/auth/reset-face", {
         ...resetData,
         face_profile: resetFace.faceProfile,
-        challenge_passed: resetFace.challengePassed,
+        challenge_passed: isChallengePassed(resetFace),
       });
 
       setLoginFailures(0);
@@ -170,10 +180,6 @@ export default function AuthCard() {
               ? "Reset face data securely"
               : "Login with strict front-face verification"}
           </h2>
-
-          <p className="mt-4 max-w-md text-sm leading-7 text-slate-300">
-            Registration and face reset require front-face blink plus two opposite side captures. Login uses front-face capture only, but still blocks weak lighting, blur, closed eyes, and photo-like static capture.
-          </p>
 
           <div className="mt-6 flex gap-3 rounded-2xl border border-white/10 bg-slate-950/60 p-2">
             {[
@@ -318,7 +324,7 @@ export default function AuthCard() {
                 </div>
 
                 <div className="rounded-2xl border border-cyanGlow/20 bg-cyanGlow/10 px-4 py-3 text-sm text-cyanGlow">
-                  Login uses front-face capture only, but eyes must be open and a real blink is required before the descriptor is accepted.
+                  For, Login you need to blink your eyes and one random head turn before the front-face descriptor is accepted.
                 </div>
 
                 <Button className="w-full" onClick={handleLogin} disabled={Boolean(busyAction)}>

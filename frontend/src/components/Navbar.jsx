@@ -16,12 +16,9 @@ export default function Navbar({ onScrollToAuth }) {
         </div>
 
         <div className="hidden items-center gap-3 md:flex">
-          <span className="rounded-full border border-white/10 px-3 py-1 text-xs text-slate-300">
-            Cybersecurity course prototype
-          </span>
           <Button variant="dark" onClick={onScrollToAuth}>
             <Sparkles className="mr-2" size={16} />
-            Launch demo
+            Launch Now
           </Button>
         </div>
       </div>

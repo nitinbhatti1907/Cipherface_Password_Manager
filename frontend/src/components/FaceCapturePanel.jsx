@@ -38,12 +38,16 @@ const MAX_CENTER_OFFSET_RATIO = 0.22;
 const MAX_ROLL = 0.18;
 
 const FRONT_YAW_MAX = 0.09;
+const BLINK_FRONT_YAW_MAX = 0.12;
 const SIDE_YAW_MIN = 0.08;
 
 const EYES_OPEN_MAX_BLINK_SCORE = 0.38;
+const BLINK_REQUIRED_SCORE = 0.52;
+const BLINK_REOPEN_MAX_SCORE = 0.30;
 const MOUTH_CLOSED_MAX = 0.20;
+
 const REQUIRED_NEUTRAL_FRAMES = 4;
-const REQUIRED_CHALLENGE_FRAMES = 3;
+const REQUIRED_TURN_FRAMES = 3;
 const CAPTURE_TIMEOUT_MS = 18000;
 
 const sleep = (ms) => new Promise((resolve) => window.setTimeout(resolve, ms));
@@ -210,7 +214,9 @@ function buildState(result, video, canvas) {
   };
 }
 
-function validateCommonState(state) {
+function validateCommonState(state, options = {}) {
+  const { allowClosedEyes = false } = options;
+
   if (state.faceWidthRatio < MIN_FACE_WIDTH_RATIO || state.faceHeightRatio < MIN_FACE_HEIGHT_RATIO) {
     return "Move a bit closer to the camera.";
   }
@@ -238,7 +244,7 @@ function validateCommonState(state) {
     return "Keep your head more upright.";
   }
 
-  if (state.blinkScore > EYES_OPEN_MAX_BLINK_SCORE) {
+  if (!allowClosedEyes && state.blinkScore > EYES_OPEN_MAX_BLINK_SCORE) {
     return "Keep both eyes open.";
   }
 
@@ -257,6 +263,23 @@ function validateFrontNeutral(state) {
   return null;
 }
 
+function validateBlinkStep(state) {
+  const commonError = validateCommonState(state, { allowClosedEyes: true });
+  if (commonError) {
+    return commonError;
+  }
+
+  if (Math.abs(state.yaw) > BLINK_FRONT_YAW_MAX) {
+    return "Blink while looking straight at the camera.";
+  }
+
+  if (state.blinkScore < BLINK_REQUIRED_SCORE) {
+    return "Blink clearly.";
+  }
+
+  return null;
+}
+
 function validateSidePose(state, requiredSign = null) {
   if (Math.abs(state.yaw) < SIDE_YAW_MIN) {
     return {
@@ -269,7 +292,7 @@ function validateSidePose(state, requiredSign = null) {
 
   if (requiredSign !== null && detectedSign !== requiredSign) {
     return {
-      error: "Now turn to the opposite side.",
+      error: requiredSign < 0 ? "Turn your face to the left." : "Turn your face to the right.",
       sign: detectedSign,
     };
   }
@@ -398,7 +421,7 @@ export default function FaceCapturePanel({ mode = "register", onCapture }) {
     setValidFrameCount(0);
     if (mode === "login") {
       setPromptText("Look straight with eyes open");
-      setProgressText("We will validate front face, ask you to open your mouth, then confirm front face again.");
+      setProgressText("We will validate front face, ask you to blink, ask for one random side turn, then confirm front face again.");
     } else {
       setPromptText("Look straight with eyes open");
       setProgressText("We will validate front face, ask you to open your mouth, confirm front face, then collect side poses.");
@@ -511,6 +534,84 @@ export default function FaceCapturePanel({ mode = "register", onCapture }) {
     throw new Error(lastError || "Front-face capture timed out.");
   };
 
+  const collectBlinkChallenge = async () => {
+    setPromptText("Blink both eyes once");
+    setValidFrameCount(0);
+
+    let sawOpenEyes = false;
+    let sawBlink = false;
+    let lastError = "Blink once while looking straight.";
+    const startedAt = Date.now();
+
+    while (Date.now() - startedAt < CAPTURE_TIMEOUT_MS) {
+      const result = await detectMediaPipeState();
+
+      if (result.error) {
+        lastError = result.error;
+        setValidFrameCount(0);
+        setProgressText(lastError);
+        await sleep(90);
+        continue;
+      }
+
+      const state = result.state;
+
+      const commonError = validateCommonState(state, { allowClosedEyes: true });
+      if (commonError) {
+        lastError = commonError;
+        setValidFrameCount(0);
+        setProgressText(lastError);
+        await sleep(90);
+        continue;
+      }
+
+      if (Math.abs(state.yaw) > BLINK_FRONT_YAW_MAX) {
+        lastError = "Blink while looking straight at the camera.";
+        setValidFrameCount(0);
+        setProgressText(lastError);
+        await sleep(90);
+        continue;
+      }
+
+      // Step 1: confirm eyes are open before blink
+      if (!sawOpenEyes) {
+        if (state.blinkScore <= EYES_OPEN_MAX_BLINK_SCORE) {
+          sawOpenEyes = true;
+          setProgressText("Eyes open detected. Now blink once.");
+        } else {
+          setProgressText("Keep your eyes open first.");
+        }
+        await sleep(70);
+        continue;
+      }
+
+      // Step 2: detect one real blink
+      if (!sawBlink) {
+        if (state.blinkScore >= BLINK_REQUIRED_SCORE) {
+          sawBlink = true;
+          setValidFrameCount(1);
+          setProgressText("Blink detected. Open your eyes again.");
+        } else {
+          setProgressText("Blink once.");
+        }
+        await sleep(70);
+        continue;
+      }
+
+      // Step 3: confirm eyes opened again after blink
+      if (state.blinkScore <= BLINK_REOPEN_MAX_SCORE) {
+        setValidFrameCount(1);
+        setProgressText("Blink verified.");
+        return true;
+      }
+
+      setProgressText("Open your eyes again.");
+      await sleep(70);
+    }
+
+    throw new Error(lastError || "Blink challenge timed out.");
+  };
+
   const collectOpenMouthChallenge = async ({ baseline }) => {
     setPromptText("Open your mouth clearly");
     setValidFrameCount(0);
@@ -562,9 +663,9 @@ export default function FaceCapturePanel({ mode = "register", onCapture }) {
 
       valid += 1;
       setValidFrameCount(valid);
-      setProgressText(`Mouth-open frames ${valid}/${REQUIRED_CHALLENGE_FRAMES}`);
+      setProgressText(`Mouth-open frames ${valid}/${REQUIRED_TURN_FRAMES}`);
 
-      if (valid >= REQUIRED_CHALLENGE_FRAMES) {
+      if (valid >= REQUIRED_TURN_FRAMES) {
         return true;
       }
 
@@ -574,7 +675,7 @@ export default function FaceCapturePanel({ mode = "register", onCapture }) {
     throw new Error(lastError || "Open-mouth challenge timed out.");
   };
 
-  const collectSidePose = async ({ prompt, requiredSign = null }) => {
+  const collectSidePose = async ({ prompt, requiredSign = null, requiredFrames = REQUIRED_NEUTRAL_FRAMES }) => {
     setPromptText(prompt);
     setValidFrameCount(0);
 
@@ -622,9 +723,9 @@ export default function FaceCapturePanel({ mode = "register", onCapture }) {
 
       valid += 1;
       setValidFrameCount(valid);
-      setProgressText(`Collecting side frames ${valid}/${REQUIRED_NEUTRAL_FRAMES}`);
+      setProgressText(`Collecting side frames ${valid}/${requiredFrames}`);
 
-      if (valid >= REQUIRED_NEUTRAL_FRAMES) {
+      if (valid >= requiredFrames) {
         const descriptor = await extractDescriptorSamples(3);
         return {
           descriptor,
@@ -647,6 +748,32 @@ export default function FaceCapturePanel({ mode = "register", onCapture }) {
         prompt: "Look straight with eyes open",
       });
 
+      if (mode === "login") {
+        await collectBlinkChallenge();
+
+        const loginTurnSign = Math.random() < 0.5 ? -1 : 1;
+
+        await collectSidePose({
+          prompt: loginTurnSign < 0 ? "Turn your face to the left" : "Turn your face to the right",
+          requiredSign: loginTurnSign,
+          requiredFrames: REQUIRED_TURN_FRAMES,
+        });
+
+        const neutralTwo = await collectNeutralFront({
+          prompt: "Look straight again with eyes open",
+        });
+
+        onCapture?.({
+          descriptor: neutralTwo.descriptor,
+          challengePassed: true,
+        });
+
+        toast.success("MediaPipe login capture passed.");
+        setPromptText("Front-face verification completed");
+        setProgressText("Login descriptor is ready.");
+        return;
+      }
+
       await collectOpenMouthChallenge({
         baseline: neutralOne.mouthBaseline,
       });
@@ -655,39 +782,30 @@ export default function FaceCapturePanel({ mode = "register", onCapture }) {
         prompt: "Close your mouth and look straight again",
       });
 
-      if (mode === "login") {
-        onCapture?.({
-          descriptor: neutralTwo.descriptor,
-          challengePassed: true,
-        });
-        toast.success("MediaPipe login capture passed.");
-        setPromptText("Front-face verification completed");
-        setProgressText("Login descriptor is ready.");
-        return;
-      }
-
       const firstSide = await collectSidePose({
         prompt: "Turn your face clearly to one side",
         requiredSign: null,
+        requiredFrames: REQUIRED_NEUTRAL_FRAMES,
       });
 
       const secondSide = await collectSidePose({
         prompt: "Now turn your face to the opposite side",
         requiredSign: firstSide.sign === 1 ? -1 : 1,
+        requiredFrames: REQUIRED_NEUTRAL_FRAMES,
       });
 
       const faceProfile =
         firstSide.sign < 0
           ? {
-              center: neutralTwo.descriptor,
-              left: firstSide.descriptor,
-              right: secondSide.descriptor,
-            }
+            center: neutralTwo.descriptor,
+            left: firstSide.descriptor,
+            right: secondSide.descriptor,
+          }
           : {
-              center: neutralTwo.descriptor,
-              left: secondSide.descriptor,
-              right: firstSide.descriptor,
-            };
+            center: neutralTwo.descriptor,
+            left: secondSide.descriptor,
+            right: firstSide.descriptor,
+          };
 
       onCapture?.({
         descriptor: neutralTwo.descriptor,
@@ -703,6 +821,7 @@ export default function FaceCapturePanel({ mode = "register", onCapture }) {
       setPromptText("Enrollment completed");
       setProgressText("Front and side captures completed successfully.");
     } catch (error) {
+      console.error(error);
       toast.error(error.message || "Secure face capture failed.");
       setProgressText(error.message || "Secure face capture failed.");
     } finally {
@@ -743,7 +862,7 @@ export default function FaceCapturePanel({ mode = "register", onCapture }) {
             Stable challenge flow
           </div>
           <p className="leading-6">
-            The challenge is now neutral front face, open mouth clearly, neutral confirmation, and side poses for enrollment or reset.
+            Login now asks for a blink and one random head turn before the final front-face confirmation.
           </p>
         </div>
       </div>
@@ -799,7 +918,7 @@ export default function FaceCapturePanel({ mode = "register", onCapture }) {
             setPromptText("Look straight with eyes open");
             setProgressText(
               mode === "login"
-                ? "We will validate front face, ask you to open your mouth, then confirm front face again."
+                ? "We will validate front face, ask you to blink, ask for one random side turn, then confirm front face again."
                 : "We will validate front face, ask you to open your mouth, confirm front face, then collect side poses."
             );
             setValidFrameCount(0);
@@ -812,7 +931,7 @@ export default function FaceCapturePanel({ mode = "register", onCapture }) {
 
         <div className="inline-flex items-center gap-2 rounded-2xl border border-cyanGlow/20 bg-cyanGlow/10 px-4 py-2 text-sm text-cyanGlow">
           <CheckCircle2 size={16} />
-          Valid frames: {validFrameCount}
+          Valid Frames: {validFrameCount}
         </div>
       </div>
     </div>
