@@ -1,180 +1,209 @@
-# CipherFace
+# CipherFace - Face Login + Encrypted Vault
 
-CipherFace is a cybersecurity course prototype for a **face-based password manager** with:
-- Face registration and face login
-- Encrypted credential vault
-- Password strength analyzer and generator
-- Audit logs
-- Auto logout on inactivity
-- Rate limiting and temporary lockout on repeated login failures
+CipherFace is a cybersecurity course prototype that combines **face-based authentication** with an **encrypted password vault**. It allows users to register with secure face enrollment, log in using face verification, store encrypted credentials, and track activity through audit logs.
 
-## Important deployment note
+## Live Demo
 
-This ZIP is designed around the project proposal, but there is one important platform constraint:
+[https://cipherface.onrender.com/](https://cipherface.onrender.com/)
 
-- **Netlify is excellent for deploying the React frontend**.
-- **Netlify does not natively deploy Python Functions** in its current Functions platform, so the Python API in this project should be deployed separately on Render, Railway, Fly.io, or any other Python host.
+## Features
 
-Because of that, this project is packaged as:
+- Face-based user registration and login
+- MediaPipe-based liveness checks
+- Anti-photo login improvement using blink + head movement flow
+- Encrypted password vault
+- Add, edit, delete, and view stored credentials
+- Audit trail for login, logout, and vault actions
+- Auto logout after inactivity
+- Modern dashboard UI
+- Single-service deployment for frontend + backend
 
-- `frontend/` - React + Vite + Tailwind UI for Netlify
-- `backend/` - Python FastAPI API for the secure vault and auth logic
-
-This keeps the stack aligned with your proposal while staying realistic for deployment.
-
-## Proposal coverage
-
-Implemented or scaffolded directly from the proposal:
-
-- React frontend dashboard and camera-based flows
-- Python backend with FastAPI
-- PostgreSQL-ready database setup with SQLite fallback for local testing
-- Face enrollment and face login workflow
-- Encrypted password storage using AES-GCM
-- Credential CRUD APIs
-- Password strength analyzer
-- Password generator
-- Audit logs
-- Login rate limiting / temporary lockout
-- Auto logout in frontend + JWT expiry in backend
-- Basic tests for crypto, password tools, and face matching
-
-## Architecture
+## Tech Stack
 
 ### Frontend
-- React + Vite
+- React
+- Vite
 - Tailwind CSS
-- Framer Motion for animations
-- `face-api.js` for browser-side face detection, landmarks, and descriptors
+- face-api.js
+- MediaPipe Tasks Vision
+- Lucide React
 
 ### Backend
 - FastAPI
 - SQLAlchemy
-- PostgreSQL or SQLite
+- SQLite
 - JWT authentication
-- AES-GCM encryption with `cryptography`
+- Uvicorn
 
-## Face authentication approach
+## Project Structure
 
-This project supports **two modes**:
+```bash
+Cipherface_Password_Manager/
+├── backend/
+│   ├── app/
+│   │   ├── routers/
+│   │   ├── utils/
+│   │   ├── main.py
+│   │   ├── models.py
+│   │   ├── schemas.py
+│   │   ├── security.py
+│   │   └── ...
+│   ├── requirements.txt
+│   └── run.py
+├── frontend/
+│   ├── public/
+│   ├── src/
+│   │   ├── components/
+│   │   ├── context/
+│   │   ├── hooks/
+│   │   ├── lib/
+│   │   ├── pages/
+│   │   └── ...
+│   ├── package.json
+│   └── vite.config.js
+├── Dockerfile
+└── README.md
+```
 
-### 1) Descriptor mode (default)
-Recommended for the Netlify-friendly setup.
-- Face detection and descriptor extraction happen in the browser using `face-api.js`
-- The Python backend stores and compares the face descriptor securely
-- This is the default because it is much easier to deploy
+## How It Works
 
-### 2) Image mode (optional)
-For a fully Python-based face pipeline on a traditional Python host.
-- Backend can be extended to use `face_recognition` / OpenCV
-- A helper service stub is included for that path
-- This is not enabled by default because heavy CV dependencies are not ideal for the target deployment setup
+### 1. Face Enrollment
+During registration, the user completes a face capture flow that collects:
+- front face
+- side face poses
+- liveness-based movement checks
 
-## Quick start
+This helps reduce spoofing attempts and improves face profile quality.
 
-### 1) Backend
+### 2. Face Login
+During login, the user:
+- aligns the face in front of the camera
+- performs a blink
+- performs a head turn challenge
+- returns to a front-facing position
+
+Only after this challenge passes is the face descriptor used for login.
+
+### 3. Encrypted Vault
+After successful login, users can:
+- store credentials
+- update credentials
+- delete credentials
+- view hidden password details
+
+### 4. Audit Logging
+Important actions are recorded, including:
+- registration
+- login success/failure
+- logout
+- vault operations
+- face reset actions
+
+## Local Setup
+
+### Prerequisites
+- Node.js
+- Python 3.x
+- pip
+
+### Backend Setup
+
 ```bash
 cd backend
 python -m venv .venv
-# Windows:
-.venv\Scripts\activate
-# macOS/Linux:
 source .venv/bin/activate
 pip install -r requirements.txt
-copy .env.example .env
-uvicorn app.main:app --reload
+python run.py
 ```
 
-Backend runs on `http://localhost:8000`.
+Backend runs at:
 
-### 2) Frontend
+```bash
+http://127.0.0.1:8000
+```
+
+### Frontend Setup
+
 ```bash
 cd frontend
 npm install
 npm run dev
 ```
 
-Frontend runs on `http://localhost:5173`.
+Frontend runs at:
 
-## Environment variables
+```bash
+http://127.0.0.1:5173
+```
+
+## Environment Variables
 
 ### Backend `.env`
-See `backend/.env.example`
+Example:
 
-Important variables:
-- `DATABASE_URL`
-- `JWT_SECRET`
-- `VAULT_ENCRYPTION_KEY`
-- `CORS_ORIGINS`
-- `FACE_MODE`
+```env
+APP_NAME=CipherFace API
+APP_ENV=development
+DATABASE_URL=sqlite:///./cipherface.db
+JWT_SECRET=your-secret-key
+JWT_ALGORITHM=HS256
+JWT_EXPIRE_MINUTES=30
+VAULT_ENCRYPTION_KEY=your-encryption-key
+CORS_ORIGINS=http://localhost:5173
+FACE_MODE=descriptor
+FACE_MATCH_THRESHOLD=0.36
+FACE_AVERAGE_THRESHOLD=0.40
+FACE_SIDE_MIN_DISTANCE=0.05
+LOGIN_MAX_ATTEMPTS=5
+FACE_RESET_AFTER_ATTEMPTS=3
+LOCKOUT_MINUTES=15
+```
 
 ### Frontend `.env`
-See `frontend/.env.example`
+Example:
 
-Important variables:
-- `VITE_API_BASE_URL`
-- `VITE_FACE_MODEL_URL`
-- `VITE_IDLE_TIMEOUT_MS`
-
-## Netlify frontend deployment
-
-1. Push this project to GitHub.
-2. In Netlify, create a new site from that repo.
-3. Use the root `netlify.toml` already included.
-4. Set the frontend env var:
-   - `VITE_API_BASE_URL=https://YOUR-PYTHON-BACKEND/api`
-5. Deploy.
-
-## Python backend deployment suggestions
-
-Any Python-friendly host works. Common options:
-- Render
-- Railway
-- Fly.io
-- a VPS
-
-## Security notes for demo/prototype
-
-This is a **course prototype**, not a production password manager. It demonstrates secure patterns, but before real production use you would still want:
-- hardware-backed key management / KMS
-- stronger liveness detection
-- CSRF strategy if using cookie sessions
-- refresh token rotation
-- device/session management
-- monitoring and alerting
-- stronger anomaly detection
-- hardened secrets management
-
-## Folder structure
-
-```text
-cipherface_project/
-  frontend/
-  backend/
-  netlify.toml
-  README.md
+```env
+VITE_API_BASE_URL=http://127.0.0.1:8000/api
 ```
 
+## Deployment
 
-## Python 3.14 note
-This package was adjusted to run locally with Python 3.14 by removing the NumPy runtime dependency and updating backend dependency ranges so pip can install Python 3.14-compatible wheels.
+This project is currently deployed as a **single Render service**, where:
 
+- React frontend is built and served through FastAPI
+- FastAPI handles API routes
+- SQLite is used for demo purposes
 
-## Node 16 compatibility
+Live link:
 
-This package is pinned to a Node 16 compatible frontend toolchain:
-- Vite 4.x
-- React Router 6.x
+[https://cipherface.onrender.com/](https://cipherface.onrender.com/)
 
-Local frontend commands:
-```bash
-cd frontend
-npm install
-cp .env.example .env
-npm run dev
-```
+## Important Note
 
-On Windows PowerShell, replace `cp` with:
-```powershell
-Copy-Item .env.example .env -Force
-```
+This project is a **course prototype / demo project**. The deployed version uses SQLite for simplicity, which is fine for demonstration, but not ideal for production-scale persistent storage.
+
+## Screens Included in the App
+
+- Register
+- Login
+- Reset Face Data
+- Dashboard
+- Vault Entries
+- Audit Trail
+
+## Future Improvements
+
+- Replace SQLite with PostgreSQL for production
+- Move from demo hosting to production-ready infrastructure
+- Stronger server-side liveness verification
+- Email verification and password reset flow
+- Better biometric anti-spoofing support
+- Improved activity filtering and search
+
+## Author
+
+**Nitin Bhatti**
+
+## License
+
+This project is for educational and academic demonstration purposes.
