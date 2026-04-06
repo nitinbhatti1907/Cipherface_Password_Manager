@@ -1,6 +1,6 @@
 # CipherFace - Face Login + Encrypted Vault
 
-CipherFace is a cybersecurity course prototype that combines **face-based authentication** with an **encrypted password vault**. It allows users to register with secure face enrollment, log in using face verification, store encrypted credentials, and track activity through audit logs.
+CipherFace is a prototype model that combines **face-based authentication** with an **encrypted password vault**. It allows users to register with secure face enrollment, log in using face verification, store encrypted credentials, and track activity through audit logs.
 
 ## Live Demo
 
